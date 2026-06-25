@@ -8,16 +8,33 @@ let vibrationInterval = null;
 let wakeLock = null;
 let heartbeatInterval = null;
 
+function addLog(msg) {
+    const logContent = document.getElementById('log-content');
+    const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const entry = document.createElement('div');
+    entry.innerText = `[${time}] ${msg}`;
+    logContent.prepend(entry);
+    console.log(msg);
+}
+
+function clearLog() {
+    document.getElementById('log-content').innerHTML = '';
+}
+
 async function unlockAudio() {
     const alarm = document.getElementById('alarm-sound');
+    addLog("Unlocking audio and wake lock...");
     alarm.play().then(() => {
         alarm.pause();
         alarm.currentTime = 0;
         document.getElementById('unlock-view').classList.add('hidden');
         document.getElementById('setup-view').classList.remove('hidden');
         document.getElementById('diag-bar').classList.remove('hidden');
+        document.getElementById('log-view').classList.remove('hidden');
+        document.getElementById('bottom-controls').classList.remove('hidden');
         requestWakeLock();
     }).catch(e => {
+        addLog("Audio unlock failed: " + e.message);
         alert("Please tap again to enable the alarm.");
     });
 }
@@ -26,9 +43,9 @@ async function requestWakeLock() {
     if ('wakeLock' in navigator) {
         try {
             wakeLock = await navigator.wakeLock.request('screen');
-            console.log('Wake Lock active');
+            addLog("Screen Wake Lock active");
         } catch (err) {
-            console.error(`${err.name}, ${err.message}`);
+            addLog("Wake Lock failed: " + err.message);
         }
     }
 }
@@ -50,24 +67,25 @@ function initPeer(role) {
 
     sharedId = idInput;
     deviceRole = role;
-    const status = document.getElementById('init-status');
-    status.innerText = "Connecting to signaling...";
-
+    addLog(`Initializing as ${role} for ID: ${sharedId}`);
+    
     const peerId = (role === 'receiver') ? sharedId : null;
     
     if (peer) peer.destroy();
     
-    // PeerJS configuration for better cross-network reliability
     peer = new Peer(peerId, {
         config: {
             'iceServers': [
                 { url: 'stun:stun.l.google.com:19302' },
-                { url: 'stun:stun1.l.google.com:19302' }
+                { url: 'stun:stun1.l.google.com:19302' },
+                { url: 'stun:stun2.l.google.com:19302' }
             ]
-        }
+        },
+        debug: 1
     });
 
     peer.on('open', (id) => {
+        addLog("Signaling connected. My Peer ID: " + id);
         updateStatus('sig', true);
         document.getElementById('setup-view').classList.add('hidden');
         if (role === 'caller') {
@@ -82,31 +100,39 @@ function initPeer(role) {
     });
 
     peer.on('connection', (connection) => {
+        addLog("Incoming connection from: " + connection.peer);
         conn = connection;
         setupConnListeners();
     });
 
     peer.on('disconnected', () => {
+        addLog("Signaling disconnected. Attempting reconnect...");
         updateStatus('sig', false);
         peer.reconnect();
     });
 
     peer.on('error', (err) => {
-        console.error("Peer Error:", err);
+        addLog("PeerJS Error: " + err.type);
         if (err.type === 'peer-unavailable' && deviceRole === 'caller') {
+            addLog("Target receiver not found online.");
             document.getElementById('status-msg').innerText = "Receiver not found. Retrying...";
-            setTimeout(connectToReceiver, 3000);
+            setTimeout(connectToReceiver, 5000);
         }
     });
 }
 
 function connectToReceiver() {
-    if (!peer || peer.destroyed) return;
-    const statusMsg = document.getElementById('status-msg');
-    statusMsg.innerText = "Linking devices...";
+    if (!peer || peer.destroyed) {
+        addLog("Cannot connect: Peer not initialized.");
+        return;
+    }
+    addLog(`Attempting P2P link to: ${sharedId}`);
     if (conn) conn.close();
     
-    conn = peer.connect(sharedId, { reliable: true });
+    conn = peer.connect(sharedId, { 
+        reliable: true,
+        metadata: { timestamp: Date.now() }
+    });
     setupConnListeners();
 }
 
@@ -114,12 +140,14 @@ function setupConnListeners() {
     if (!conn) return;
     
     conn.on('open', () => {
+        addLog("P2P Link established ✅");
         updateStatus('p2p', true);
         const statusMsg = document.getElementById('status-msg');
-        statusMsg.innerText = "Connected ✅";
-        statusMsg.classList.add('text-emerald-400');
+        if (statusMsg) {
+            statusMsg.innerText = "Connected ✅";
+            statusMsg.classList.add('text-emerald-400');
+        }
         
-        // Start Heartbeat to keep mobile connection alive
         if (heartbeatInterval) clearInterval(heartbeatInterval);
         heartbeatInterval = setInterval(() => {
             if (conn && conn.open) conn.send('PING');
@@ -127,21 +155,36 @@ function setupConnListeners() {
     });
 
     conn.on('data', (data) => {
-        if (data === 'RING') handleIncomingCall();
-        if (data === 'DISMISSED') stopAlarm();
-        if (data === 'PING') console.log('Heartbeat received');
+        if (data === 'RING') {
+            addLog("Incoming RING signal received!");
+            handleIncomingCall();
+        }
+        if (data === 'DISMISSED') {
+            addLog("Call dismissed by other device.");
+            stopAlarm();
+        }
+        if (data === 'PING') {
+            // Heartbeat received
+        }
     });
 
     conn.on('close', () => {
+        addLog("P2P Link closed.");
         updateStatus('p2p', false);
         if (deviceRole === 'caller') {
-            setTimeout(connectToReceiver, 3000);
+            addLog("Auto-reconnecting in 5s...");
+            setTimeout(connectToReceiver, 5000);
         }
+    });
+
+    conn.on('error', (err) => {
+        addLog("Connection Error: " + err.message);
     });
 }
 
 function triggerCall() {
     if (conn && conn.open) {
+        addLog("Sending RING signal...");
         conn.send('RING');
         const statusMsg = document.getElementById('status-msg');
         statusMsg.innerText = "Ringing...";
@@ -149,6 +192,7 @@ function triggerCall() {
             if (conn && conn.open) statusMsg.innerText = "Connected ✅"; 
         }, 2000);
     } else {
+        addLog("Call failed: No active P2P link.");
         connectToReceiver();
     }
 }
@@ -162,7 +206,7 @@ function handleIncomingCall() {
     alarm.loop = true;
     alarm.volume = 1.0;
     alarm.currentTime = 0;
-    alarm.play().catch(e => console.log("Audio blocked"));
+    alarm.play().catch(e => addLog("Audio blocked: " + e.message));
 
     if ("vibrate" in navigator) {
         vibrationInterval = setInterval(() => {
@@ -234,6 +278,9 @@ document.addEventListener('visibilitychange', async () => {
 });
 
 if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data === 'STOP_ALARM') dismissCall();
+    });
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js');
     });
