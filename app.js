@@ -10,6 +10,7 @@ let heartbeatInterval = null;
 
 function addLog(msg) {
     const logContent = document.getElementById('log-content');
+    if (!logContent) return;
     const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const entry = document.createElement('div');
     entry.innerText = `[${time}] ${msg}`;
@@ -22,31 +23,52 @@ function clearLog() {
 }
 
 async function unlockAudio() {
+    addLog("Activation button clicked.");
+    
+    // 1. Immediately switch UI to avoid "stuck" feeling
+    document.getElementById('unlock-view').classList.add('hidden');
+    document.getElementById('setup-view').classList.remove('hidden');
+    document.getElementById('diag-bar').classList.remove('hidden');
+    document.getElementById('log-view').classList.remove('hidden');
+    document.getElementById('bottom-controls').classList.remove('hidden');
+
+    // 2. Prime Audio
     const alarm = document.getElementById('alarm-sound');
-    addLog("Unlocking audio and wake lock...");
-    alarm.play().then(() => {
+    try {
+        // We play and immediately pause to satisfy browser requirements
+        await alarm.play();
         alarm.pause();
         alarm.currentTime = 0;
-        document.getElementById('unlock-view').classList.add('hidden');
-        document.getElementById('setup-view').classList.remove('hidden');
-        document.getElementById('diag-bar').classList.remove('hidden');
-        document.getElementById('log-view').classList.remove('hidden');
-        document.getElementById('bottom-controls').classList.remove('hidden');
-        requestWakeLock();
-    }).catch(e => {
-        addLog("Audio unlock failed: " + e.message);
-        alert("Please tap again to enable the alarm.");
-    });
+        addLog("Audio system primed ✅");
+    } catch (e) {
+        addLog("Audio priming failed: " + e.message);
+        addLog("Note: Alarm sound might only play after manual interaction.");
+    }
+
+    // 3. Prime Vibration
+    if ("vibrate" in navigator) {
+        try {
+            navigator.vibrate(10);
+            addLog("Vibration system primed ✅");
+        } catch (e) {
+            addLog("Vibration priming failed.");
+        }
+    }
+
+    // 4. Request Wake Lock
+    requestWakeLock();
 }
 
 async function requestWakeLock() {
     if ('wakeLock' in navigator) {
         try {
             wakeLock = await navigator.wakeLock.request('screen');
-            addLog("Screen Wake Lock active");
+            addLog("Screen Wake Lock active ✅");
         } catch (err) {
             addLog("Wake Lock failed: " + err.message);
         }
+    } else {
+        addLog("Wake Lock API not supported on this browser.");
     }
 }
 
