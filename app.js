@@ -87,10 +87,18 @@ function handleIncomingCall() {
     const incomingUI = document.getElementById('incoming-call-ui');
     const timerDisplay = document.getElementById('auto-dismiss-timer');
     
-    // Show UI and Play Sound
+    // Show UI and Play Sound at MAX volume
     incomingUI.classList.remove('hidden');
+    alarm.volume = 1.0; // Ensure max volume
     alarm.currentTime = 0;
-    alarm.play().catch(e => console.log("Audio blocked"));
+    
+    const playPromise = alarm.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(error => {
+            console.log("Playback failed. User interaction required.");
+            // We still show the UI so they can interact and hear it next time
+        });
+    }
 
     // Notification
     showNotification();
@@ -127,7 +135,9 @@ function stopAlarm() {
     
     // Close notifications
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready.then(reg => {
+        navigator.ready ? navigator.ready.then(reg => {
+            reg.getNotifications({ tag: 'call-notification' }).then(ns => ns.forEach(n => n.close()));
+        }) : navigator.serviceWorker.ready.then(reg => {
             reg.getNotifications({ tag: 'call-notification' }).then(ns => ns.forEach(n => n.close()));
         });
     }
@@ -142,7 +152,8 @@ function showNotification() {
         body: "Incoming Call!",
         icon: "https://cdn-icons-png.flaticon.com/512/3616/3616215.png",
         tag: "call-notification",
-        renotify: true
+        renotify: true,
+        silent: false // Try to trigger system sound too
     };
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(reg => reg.showNotification("CallNotify", options));
