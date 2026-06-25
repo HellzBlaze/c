@@ -1,31 +1,32 @@
-# CallNotify - GitHub Call Site
+# CallNotify - Dark Mode P2P Call Site
 
-A simple, static HTML call site that allows you to trigger notifications across devices using Firebase.
+A self-contained, static HTML call site that uses PeerJS for direct peer-to-peer signaling. No external database or server setup required.
 
 ## Features
-- **Real-time Signaling**: Uses Firebase Realtime Database to sync calls between devices.
-- **Background Notifications**: Service Worker support for background alerts on Desktop and Android.
+- **Dark Mode UI**: Sleek, modern interface designed for low-light environments.
+- **P2P Signaling**: Uses PeerJS for direct connection between devices.
+- **Background Notifications**: Service Worker support for background alerts.
 - **Mild Alarm**: Custom-generated mild chime sound.
-- **Auto-Dismiss**: Notifications disappear after 10 seconds if not dismissed.
+- **Auto-Dismiss**: Notifications disappear after 10 seconds.
 
 ## Setup Instructions
 
-To make this site functional, you need to provide your own Firebase configuration:
+This site is fully self-contained. To deploy:
 
-1. Go to the [Firebase Console](https://console.firebase.google.com/).
-2. Create a new project.
-3. Add a "Web App" to your project.
-4. Copy the `firebaseConfig` object.
-5. Open `public/app.js` and replace the placeholder `firebaseConfig` with your own.
-6. Enable **Realtime Database** in your Firebase project and set the rules to allow read/write for testing (or configure security rules).
-7. Deploy the `public` folder to **GitHub Pages**.
+1. Push this repository to GitHub.
+2. Go to **Settings > Pages**.
+3. Select the **main** branch and click **Save**.
+4. Access your site via the provided URL (must be `https://`).
 
-## Usage
+## How to Use
 1. Open the site on two devices.
-2. Enter the same **Room ID** on both.
-3. Set one as **Receiver** and one as **Caller**.
-4. Press the **Call** button on the Caller device.
-5. The Receiver device will play a sound and show a notification (even in the background).
+2. Enter the **same unique ID** on both devices (e.g., `my-private-room-123`).
+3. On one device, click **Be Receiver**.
+4. On the other device, click **Be Caller**.
+5. Once connected, press the **Call** button to trigger the notification and sound on the receiver.
 
-## Note on Background Notifications
-For background notifications to work on Android/Chrome, the site must be served over **HTTPS** (GitHub Pages provides this) and the user must grant notification permissions.
+## Technical Details
+- **Signaling**: PeerJS (WebRTC)
+- **Styling**: Tailwind CSS
+- **Notifications**: Web Notifications API + Service Workers
+- **Audio**: HTML5 Audio API

@@ -1,14 +1,19 @@
-/* Custom styles for the call site */
-@keyframes pulse-red {
-    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-    70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
-    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+/* Custom styles for the dark mode call site */
+@keyframes pulse-rose {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.7); }
+    70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(225, 29, 72, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(225, 29, 72, 0); }
 }
 
 #call-btn:active {
-    animation: pulse-red 0.5s infinite;
+    animation: pulse-rose 0.5s infinite;
 }
 
 body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+::placeholder {
+    color: #4b5563;
 }

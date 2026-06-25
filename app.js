@@ -1,97 +1,114 @@
-// Firebase Configuration Template
-// Users will need to replace this with their own Firebase project config
-const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
-};
-
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
-
-let currentRoom = "";
+let peer = null;
+let conn = null;
 let deviceRole = "";
+let sharedId = "";
 
-function setupDevice(role) {
-    const roomId = document.getElementById('room-id').value.trim();
-    if (!roomId) {
-        alert("Please enter a Room ID");
+function initPeer(role) {
+    const idInput = document.getElementById('peer-id-input').value.trim();
+    if (!idInput) {
+        alert("Please enter a unique ID");
         return;
     }
 
-    currentRoom = roomId;
+    sharedId = idInput;
     deviceRole = role;
+    const status = document.getElementById('init-status');
+    status.innerText = "Connecting...";
 
-    document.getElementById('setup-view').classList.add('hidden');
-    if (role === 'caller') {
-        document.getElementById('caller-view').classList.remove('hidden');
-        document.getElementById('caller-room-display').innerText = `Room: ${currentRoom}`;
-    } else {
-        document.getElementById('receiver-view').classList.remove('hidden');
-        document.getElementById('receiver-room-display').innerText = `Room: ${currentRoom}`;
-        requestNotificationPermission();
-        listenForCalls();
-    }
-}
-
-function resetView() {
-    document.getElementById('setup-view').classList.remove('hidden');
-    document.getElementById('caller-view').classList.add('hidden');
-    document.getElementById('receiver-view').classList.add('hidden');
+    // Receiver uses the exact ID, Caller uses ID + "-caller"
+    const peerId = (role === 'receiver') ? sharedId : `${sharedId}-caller`;
     
-    // Stop listening if receiver
-    if (deviceRole === 'receiver' && currentRoom) {
-        database.ref(`rooms/${currentRoom}/call`).off();
-    }
-}
+    peer = new Peer(peerId);
 
-function triggerCall() {
-    if (!currentRoom) return;
-    
-    const statusMsg = document.getElementById('status-msg');
-    statusMsg.innerText = "Calling...";
-    statusMsg.classList.remove('text-gray-400');
-    statusMsg.classList.add('text-red-500', 'font-bold');
+    peer.on('open', (id) => {
+        console.log('My peer ID is: ' + id);
+        document.getElementById('setup-view').classList.add('hidden');
+        
+        if (role === 'caller') {
+            document.getElementById('caller-view').classList.remove('hidden');
+            document.getElementById('caller-id-display').innerText = `Your ID: ${id}`;
+            connectToReceiver();
+        } else {
+            document.getElementById('receiver-view').classList.remove('hidden');
+            document.getElementById('receiver-id-display').innerText = `Listening as: ${id}`;
+            requestNotificationPermission();
+        }
+    });
 
-    // Push a call event to Firebase with a timestamp
-    database.ref(`rooms/${currentRoom}/call`).set({
-        timestamp: Date.now(),
-        caller: "Device A" // Can be randomized or set
-    }).then(() => {
-        setTimeout(() => {
-            statusMsg.innerText = "Ready to call";
-            statusMsg.classList.remove('text-red-500', 'font-bold');
-            statusMsg.classList.add('text-gray-400');
-        }, 2000);
+    peer.on('connection', (connection) => {
+        conn = connection;
+        setupConnListeners();
+    });
+
+    peer.on('error', (err) => {
+        console.error(err);
+        if (err.type === 'unavailable-id') {
+            alert("This ID is already taken. Please choose another one.");
+        } else {
+            alert("Connection error: " + err.message);
+        }
+        location.reload();
     });
 }
 
-function listenForCalls() {
-    database.ref(`rooms/${currentRoom}/call`).on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (data && data.timestamp) {
-            // Check if call is fresh (within last 5 seconds)
-            if (Date.now() - data.timestamp < 5000) {
-                handleIncomingCall();
-            }
+function connectToReceiver() {
+    const statusMsg = document.getElementById('status-msg');
+    statusMsg.innerText = "Searching for receiver...";
+    
+    // Try to connect to the receiver's ID
+    conn = peer.connect(sharedId);
+    setupConnListeners();
+}
+
+function setupConnListeners() {
+    conn.on('open', () => {
+        console.log("Connected to " + conn.peer);
+        if (deviceRole === 'caller') {
+            document.getElementById('status-msg').innerText = "Connected to Receiver";
+        }
+    });
+
+    conn.on('data', (data) => {
+        if (data === 'RING') {
+            handleIncomingCall();
+        }
+    });
+
+    conn.on('close', () => {
+        console.log("Connection closed");
+        if (deviceRole === 'caller') {
+            document.getElementById('status-msg').innerText = "Receiver disconnected. Reconnecting...";
+            setTimeout(connectToReceiver, 3000);
         }
     });
 }
 
+function triggerCall() {
+    if (conn && conn.open) {
+        conn.send('RING');
+        const statusMsg = document.getElementById('status-msg');
+        statusMsg.innerText = "Calling...";
+        statusMsg.classList.add('text-rose-500', 'font-bold');
+        
+        setTimeout(() => {
+            statusMsg.innerText = "Connected to Receiver";
+            statusMsg.classList.remove('text-rose-500', 'font-bold');
+        }, 2000);
+    } else {
+        alert("Not connected to receiver yet. Please wait.");
+        connectToReceiver();
+    }
+}
+
 function handleIncomingCall() {
-    console.log("Incoming call detected!");
+    console.log("Incoming call!");
     
-    // 1. Play sound if tab is active
+    // 1. Play sound
     const alarm = document.getElementById('alarm-sound');
     alarm.currentTime = 0;
     alarm.play().catch(e => console.log("Audio play blocked: ", e));
 
-    // 2. Show notification (works in background if SW is registered)
+    // 2. Show notification
     if (Notification.permission === "granted") {
         showNotification();
     }
@@ -99,11 +116,7 @@ function handleIncomingCall() {
 
 function requestNotificationPermission() {
     if ("Notification" in window) {
-        Notification.requestPermission().then(permission => {
-            if (permission !== "granted") {
-                alert("Please enable notifications to receive calls in the background.");
-            }
-        });
+        Notification.requestPermission();
     }
 }
 
@@ -112,18 +125,15 @@ function showNotification() {
         body: "Someone is calling you!",
         icon: "https://cdn-icons-png.flaticon.com/512/3616/3616215.png",
         tag: "call-notification",
-        renotify: true,
-        silent: false 
+        renotify: true
     };
 
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(registration => {
             registration.showNotification("Incoming Call", options);
-            
-            // Auto-dismiss after 10 seconds
             setTimeout(() => {
                 registration.getNotifications({ tag: 'call-notification' }).then(notifications => {
-                    notifications.forEach(notification => notification.close());
+                    notifications.forEach(n => n.close());
                 });
             }, 10000);
         });
@@ -137,7 +147,7 @@ function showNotification() {
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js')
-            .then(reg => console.log('SW Registered', reg))
-            .catch(err => console.log('SW Registration Failed', err));
+            .then(reg => console.log('SW Registered'))
+            .catch(err => console.log('SW Failed', err));
     });
 }
