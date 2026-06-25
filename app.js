@@ -5,6 +5,32 @@ let sharedId = "";
 let dismissTimeout = null;
 let countdownInterval = null;
 let vibrationInterval = null;
+let wakeLock = null;
+
+async function unlockAudio() {
+    // Play and immediately pause to unlock audio
+    const alarm = document.getElementById('alarm-sound');
+    alarm.play().then(() => {
+        alarm.pause();
+        alarm.currentTime = 0;
+        document.getElementById('unlock-view').classList.add('hidden');
+        document.getElementById('setup-view').classList.remove('hidden');
+        requestWakeLock();
+    }).catch(e => {
+        alert("Please tap again to enable the alarm.");
+    });
+}
+
+async function requestWakeLock() {
+    if ('wakeLock' in navigator) {
+        try {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log('Wake Lock active');
+        } catch (err) {
+            console.error(`${err.name}, ${err.message}`);
+        }
+    }
+}
 
 function initPeer(role) {
     const idInput = document.getElementById('peer-id-input').value.trim();
@@ -88,26 +114,23 @@ function handleIncomingCall() {
     const incomingUI = document.getElementById('incoming-call-ui');
     const timerDisplay = document.getElementById('auto-dismiss-timer');
     
-    // 1. Show Visual UI
     incomingUI.classList.remove('hidden');
     
-    // 2. Play Continuous Boosted Alarm (Media Volume)
+    // Continuous Alarm (Media Volume)
     alarm.loop = true;
     alarm.volume = 1.0;
     alarm.currentTime = 0;
     alarm.play().catch(e => console.log("Audio blocked. Interaction needed."));
 
-    // 3. Trigger Continuous Vibration
+    // Continuous Vibration
     if ("vibrate" in navigator) {
         vibrationInterval = setInterval(() => {
-            navigator.vibrate([500, 200, 500]);
-        }, 1200);
+            navigator.vibrate([500, 200, 500, 200, 500]);
+        }, 1500);
     }
 
-    // 4. Show Notification
     showNotification();
 
-    // 5. Auto-dismiss logic (10 seconds)
     let secondsLeft = 10;
     timerDisplay.innerText = `Auto-dismissing in ${secondsLeft}s...`;
     
@@ -139,7 +162,6 @@ function stopAlarm() {
     if (dismissTimeout) clearTimeout(dismissTimeout);
     if ("vibrate" in navigator) navigator.vibrate(0);
     
-    // Close notifications
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(reg => {
             reg.getNotifications({ tag: 'call-notification' }).then(ns => ns.forEach(n => n.close()));
@@ -153,17 +175,25 @@ function requestNotificationPermission() {
 
 function showNotification() {
     const options = {
-        body: "Someone is calling you!",
+        body: "URGENT: Someone is calling you!",
         icon: "https://cdn-icons-png.flaticon.com/512/3616/3616215.png",
         tag: "call-notification",
         renotify: true,
         silent: false,
-        requireInteraction: true
+        requireInteraction: true,
+        vibrate: [500, 100, 500, 100, 500, 100, 500, 100, 500, 100, 500]
     };
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(reg => reg.showNotification("CallNotify", options));
     }
 }
+
+// Re-request wake lock if tab becomes visible again
+document.addEventListener('visibilitychange', async () => {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+        requestWakeLock();
+    }
+});
 
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', event => {
