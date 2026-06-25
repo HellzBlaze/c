@@ -4,6 +4,7 @@ let deviceRole = "";
 let sharedId = "";
 let dismissTimeout = null;
 let countdownInterval = null;
+let vibrationInterval = null;
 
 function initPeer(role) {
     const idInput = document.getElementById('peer-id-input').value.trim();
@@ -83,16 +84,30 @@ function triggerCall() {
 }
 
 function handleIncomingCall() {
+    const alarm = document.getElementById('alarm-sound');
     const incomingUI = document.getElementById('incoming-call-ui');
     const timerDisplay = document.getElementById('auto-dismiss-timer');
     
-    // Show UI (Visual only, no Media volume audio)
+    // 1. Show Visual UI
     incomingUI.classList.remove('hidden');
     
-    // Trigger System Notification (Uses Notification Volume & System Alert Sound)
+    // 2. Play Continuous Boosted Alarm (Media Volume)
+    alarm.loop = true;
+    alarm.volume = 1.0;
+    alarm.currentTime = 0;
+    alarm.play().catch(e => console.log("Audio blocked. Interaction needed."));
+
+    // 3. Trigger Continuous Vibration
+    if ("vibrate" in navigator) {
+        vibrationInterval = setInterval(() => {
+            navigator.vibrate([500, 200, 500]);
+        }, 1200);
+    }
+
+    // 4. Show Notification
     showNotification();
 
-    // Auto-dismiss logic
+    // 5. Auto-dismiss logic (10 seconds)
     let secondsLeft = 10;
     timerDisplay.innerText = `Auto-dismissing in ${secondsLeft}s...`;
     
@@ -113,11 +128,16 @@ function dismissCall() {
 }
 
 function stopAlarm() {
+    const alarm = document.getElementById('alarm-sound');
     const incomingUI = document.getElementById('incoming-call-ui');
+    
+    alarm.pause();
     incomingUI.classList.add('hidden');
     
+    if (vibrationInterval) clearInterval(vibrationInterval);
     if (countdownInterval) clearInterval(countdownInterval);
     if (dismissTimeout) clearTimeout(dismissTimeout);
+    if ("vibrate" in navigator) navigator.vibrate(0);
     
     // Close notifications
     if ('serviceWorker' in navigator) {
@@ -137,15 +157,11 @@ function showNotification() {
         icon: "https://cdn-icons-png.flaticon.com/512/3616/3616215.png",
         tag: "call-notification",
         renotify: true,
-        silent: false, // Forces system notification sound (NOTIFICATION VOLUME)
-        requireInteraction: true,
-        vibrate: [500, 100, 500, 100, 500, 100, 500]
+        silent: false,
+        requireInteraction: true
     };
-    
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready.then(reg => {
-            reg.showNotification("Incoming Call", options);
-        });
+        navigator.serviceWorker.ready.then(reg => reg.showNotification("CallNotify", options));
     }
 }
 
@@ -153,7 +169,6 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', event => {
         if (event.data === 'STOP_ALARM') dismissCall();
     });
-
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js');
     });
