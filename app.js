@@ -87,20 +87,15 @@ function handleIncomingCall() {
     const incomingUI = document.getElementById('incoming-call-ui');
     const timerDisplay = document.getElementById('auto-dismiss-timer');
     
-    // Show UI and Play Sound at MAX volume
+    // Show UI
     incomingUI.classList.remove('hidden');
-    alarm.volume = 1.0; // Ensure max volume
-    alarm.currentTime = 0;
     
-    const playPromise = alarm.play();
-    if (playPromise !== undefined) {
-        playPromise.catch(error => {
-            console.log("Playback failed. User interaction required.");
-            // We still show the UI so they can interact and hear it next time
-        });
-    }
+    // Play sound as backup (Media volume)
+    alarm.volume = 1.0;
+    alarm.currentTime = 0;
+    alarm.play().catch(e => console.log("Audio blocked - relying on system notification sound."));
 
-    // Notification
+    // Trigger System Notification (Notification volume)
     showNotification();
 
     // Auto-dismiss logic
@@ -135,9 +130,7 @@ function stopAlarm() {
     
     // Close notifications
     if ('serviceWorker' in navigator) {
-        navigator.ready ? navigator.ready.then(reg => {
-            reg.getNotifications({ tag: 'call-notification' }).then(ns => ns.forEach(n => n.close()));
-        }) : navigator.serviceWorker.ready.then(reg => {
+        navigator.serviceWorker.ready.then(reg => {
             reg.getNotifications({ tag: 'call-notification' }).then(ns => ns.forEach(n => n.close()));
         });
     }
@@ -149,14 +142,19 @@ function requestNotificationPermission() {
 
 function showNotification() {
     const options = {
-        body: "Incoming Call!",
+        body: "Someone is calling you!",
         icon: "https://cdn-icons-png.flaticon.com/512/3616/3616215.png",
         tag: "call-notification",
         renotify: true,
-        silent: false // Try to trigger system sound too
+        silent: false, // This ensures the system plays its NOTIFICATION sound
+        requireInteraction: true,
+        vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40, 500]
     };
+    
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready.then(reg => reg.showNotification("CallNotify", options));
+        navigator.serviceWorker.ready.then(reg => {
+            reg.showNotification("Incoming Call", options);
+        });
     }
 }
 
