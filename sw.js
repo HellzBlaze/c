@@ -6,9 +6,10 @@ self.addEventListener('push', function(event) {
         icon: "https://cdn-icons-png.flaticon.com/512/3616/3616215.png",
         tag: "call-notification",
         renotify: true,
-        vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40, 500],
+        vibrate: [500, 100, 500, 100, 500, 100, 500],
         requireInteraction: true,
         priority: 2, 
+        silent: false, // Forces system notification sound
         actions: [
             { action: 'dismiss', title: 'Dismiss' }
         ]
@@ -23,6 +24,10 @@ self.addEventListener('notificationclick', function(event) {
     event.notification.close();
     
     if (event.action === 'dismiss') {
+        // Send a message to all clients to stop the alarm
+        self.clients.matchAll().then(clients => {
+            clients.forEach(client => client.postMessage('STOP_ALARM'));
+        });
         return;
     }
 

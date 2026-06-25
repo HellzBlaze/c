@@ -90,12 +90,12 @@ function handleIncomingCall() {
     // Show UI
     incomingUI.classList.remove('hidden');
     
-    // Play sound as backup (Media volume)
+    // Play sound as backup
     alarm.volume = 1.0;
     alarm.currentTime = 0;
-    alarm.play().catch(e => console.log("Audio blocked - relying on system notification sound."));
+    alarm.play().catch(e => console.log("Audio blocked - relying on system notification."));
 
-    // Trigger System Notification (Notification volume)
+    // Trigger System Notification (Uses Notification Volume)
     showNotification();
 
     // Auto-dismiss logic
@@ -142,23 +142,30 @@ function requestNotificationPermission() {
 
 function showNotification() {
     const options = {
-        body: "Someone is calling you!",
+        body: "Incoming Call!",
         icon: "https://cdn-icons-png.flaticon.com/512/3616/3616215.png",
         tag: "call-notification",
         renotify: true,
-        silent: false, // This ensures the system plays its NOTIFICATION sound
+        silent: false, // Ensure system sound plays (Notification Volume)
         requireInteraction: true,
-        vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40, 500]
+        vibrate: [500, 100, 500, 100, 500]
     };
     
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(reg => {
-            reg.showNotification("Incoming Call", options);
+            reg.showNotification("CallNotify", options);
         });
     }
 }
 
+// Listen for messages from Service Worker (e.g. from Notification 'Dismiss' button)
 if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data === 'STOP_ALARM') {
+            dismissCall();
+        }
+    });
+
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js');
     });
