@@ -14,7 +14,18 @@
     <div id="app" class="bg-gray-900 p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-md text-center border border-gray-800 relative">
         <h1 class="text-2xl sm:text-3xl font-bold text-white mb-6 tracking-tight">CallNotify</h1>
         
-        <!-- Audio Unlock Overlay (Required for Browsers) -->
+        <!-- Diagnostic Bar -->
+        <div id="diag-bar" class="hidden mb-6 flex justify-between items-center px-3 py-2 bg-gray-800 rounded-lg border border-gray-700">
+            <div class="flex items-center gap-2">
+                <div id="sig-dot" class="w-2 h-2 rounded-full bg-red-500"></div>
+                <span class="text-[10px] uppercase text-gray-400 font-bold">Signaling</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <div id="p2p-dot" class="w-2 h-2 rounded-full bg-red-500"></div>
+                <span class="text-[10px] uppercase text-gray-400 font-bold">P2P Link</span>
+            </div>
+        </div>
+
         <div id="unlock-view" class="flex flex-col items-center">
             <div class="w-20 h-20 bg-indigo-600 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-indigo-900/40">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -22,7 +33,7 @@
                 </svg>
             </div>
             <h2 class="text-xl font-bold mb-2">Enable Alarm Sound</h2>
-            <p class="text-gray-400 text-sm mb-8">Browsers require a tap to allow loud alarms and background alerts.</p>
+            <p class="text-gray-400 text-sm mb-8">Required for loud alerts on Redmi/OnePlus devices.</p>
             <button onclick="unlockAudio()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl transition-all active:scale-95 shadow-lg">
                 ACTIVATE ALARM
             </button>
