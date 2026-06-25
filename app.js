@@ -13,62 +13,83 @@ function initPeer(role) {
     sharedId = idInput;
     deviceRole = role;
     const status = document.getElementById('init-status');
-    status.innerText = "Connecting...";
+    status.innerText = "Initializing Peer...";
 
-    // Receiver uses the exact ID, Caller uses ID + "-caller"
-    const peerId = (role === 'receiver') ? sharedId : `${sharedId}-caller`;
+    // Strategy: 
+    // Receiver MUST have the exact sharedId to be findable.
+    // Caller can have any ID (we'll let PeerJS generate one).
+    const peerId = (role === 'receiver') ? sharedId : null;
     
+    if (peer) peer.destroy();
     peer = new Peer(peerId);
 
     peer.on('open', (id) => {
         console.log('My peer ID is: ' + id);
+        status.innerText = "Peer ready: " + id;
+        
         document.getElementById('setup-view').classList.add('hidden');
         
         if (role === 'caller') {
             document.getElementById('caller-view').classList.remove('hidden');
-            document.getElementById('caller-id-display').innerText = `Your ID: ${id}`;
+            document.getElementById('caller-id-display').innerText = `Target Receiver: ${sharedId}`;
             connectToReceiver();
         } else {
             document.getElementById('receiver-view').classList.remove('hidden');
-            document.getElementById('receiver-id-display').innerText = `Listening as: ${id}`;
+            document.getElementById('receiver-id-display').innerText = `Listening as: ${sharedId}`;
             requestNotificationPermission();
         }
     });
 
     peer.on('connection', (connection) => {
+        console.log("Incoming connection from: " + connection.peer);
         conn = connection;
         setupConnListeners();
     });
 
     peer.on('error', (err) => {
-        console.error(err);
+        console.error("Peer Error:", err);
+        status.innerText = "Error: " + err.type;
         if (err.type === 'unavailable-id') {
-            alert("This ID is already taken. Please choose another one.");
+            alert("This ID is already in use by a receiver. If you are trying to be a caller, just wait or use a different ID for the pair.");
+        } else if (err.type === 'peer-unavailable') {
+            if (deviceRole === 'caller') {
+                document.getElementById('status-msg').innerText = "Receiver not found. Make sure receiver is ready.";
+            }
         } else {
-            alert("Connection error: " + err.message);
+            alert("PeerJS Error: " + err.message);
         }
-        location.reload();
     });
 }
 
 function connectToReceiver() {
-    const statusMsg = document.getElementById('status-msg');
-    statusMsg.innerText = "Searching for receiver...";
+    if (!peer || peer.destroyed) return;
     
-    // Try to connect to the receiver's ID
-    conn = peer.connect(sharedId);
+    const statusMsg = document.getElementById('status-msg');
+    statusMsg.innerText = "Connecting to receiver...";
+    statusMsg.classList.add('animate-pulse');
+    
+    // Attempt connection to the sharedId (which the receiver is using)
+    if (conn) conn.close();
+    conn = peer.connect(sharedId, {
+        reliable: true
+    });
+    
     setupConnListeners();
 }
 
 function setupConnListeners() {
+    if (!conn) return;
+
     conn.on('open', () => {
-        console.log("Connected to " + conn.peer);
-        if (deviceRole === 'caller') {
-            document.getElementById('status-msg').innerText = "Connected to Receiver";
-        }
+        console.log("Connection established with " + conn.peer);
+        const statusMsg = document.getElementById('status-msg');
+        statusMsg.innerText = "Connected to Receiver ✅";
+        statusMsg.classList.remove('animate-pulse', 'text-gray-500');
+        statusMsg.classList.add('text-emerald-400');
     });
 
     conn.on('data', (data) => {
+        console.log("Received data:", data);
         if (data === 'RING') {
             handleIncomingCall();
         }
@@ -77,7 +98,18 @@ function setupConnListeners() {
     conn.on('close', () => {
         console.log("Connection closed");
         if (deviceRole === 'caller') {
-            document.getElementById('status-msg').innerText = "Receiver disconnected. Reconnecting...";
+            const statusMsg = document.getElementById('status-msg');
+            statusMsg.innerText = "Disconnected. Retrying in 5s...";
+            statusMsg.classList.remove('text-emerald-400');
+            statusMsg.classList.add('text-rose-400');
+            setTimeout(connectToReceiver, 5000);
+        }
+    });
+
+    conn.on('error', (err) => {
+        console.error("Connection Error:", err);
+        if (deviceRole === 'caller') {
+            document.getElementById('status-msg').innerText = "Connection failed. Retrying...";
             setTimeout(connectToReceiver, 3000);
         }
     });
@@ -85,38 +117,53 @@ function setupConnListeners() {
 
 function triggerCall() {
     if (conn && conn.open) {
+        console.log("Sending RING signal...");
         conn.send('RING');
+        
         const statusMsg = document.getElementById('status-msg');
-        statusMsg.innerText = "Calling...";
+        const originalText = statusMsg.innerText;
+        statusMsg.innerText = "Ringing Receiver...";
         statusMsg.classList.add('text-rose-500', 'font-bold');
         
         setTimeout(() => {
-            statusMsg.innerText = "Connected to Receiver";
+            statusMsg.innerText = originalText;
             statusMsg.classList.remove('text-rose-500', 'font-bold');
         }, 2000);
     } else {
-        alert("Not connected to receiver yet. Please wait.");
+        console.log("Cannot call: Connection not open");
+        alert("Not connected to receiver. Attempting to reconnect...");
         connectToReceiver();
     }
 }
 
 function handleIncomingCall() {
-    console.log("Incoming call!");
+    console.log("Incoming call event triggered!");
     
     // 1. Play sound
     const alarm = document.getElementById('alarm-sound');
     alarm.currentTime = 0;
-    alarm.play().catch(e => console.log("Audio play blocked: ", e));
+    alarm.play().catch(e => {
+        console.warn("Audio play blocked. Interaction might be needed.", e);
+        // Fallback: simple alert if audio blocked
+        if (!document.hasFocus()) {
+            console.log("Tab backgrounded, relying on notification.");
+        }
+    });
 
     // 2. Show notification
     if (Notification.permission === "granted") {
         showNotification();
+    } else {
+        console.log("Notification permission not granted.");
+        alert("Incoming Call!");
     }
 }
 
 function requestNotificationPermission() {
     if ("Notification" in window) {
-        Notification.requestPermission();
+        Notification.requestPermission().then(permission => {
+            console.log("Notification permission:", permission);
+        });
     }
 }
 
@@ -125,7 +172,8 @@ function showNotification() {
         body: "Someone is calling you!",
         icon: "https://cdn-icons-png.flaticon.com/512/3616/3616215.png",
         tag: "call-notification",
-        renotify: true
+        renotify: true,
+        vibrate: [200, 100, 200]
     };
 
     if ('serviceWorker' in navigator) {
