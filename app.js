@@ -83,19 +83,13 @@ function triggerCall() {
 }
 
 function handleIncomingCall() {
-    const alarm = document.getElementById('alarm-sound');
     const incomingUI = document.getElementById('incoming-call-ui');
     const timerDisplay = document.getElementById('auto-dismiss-timer');
     
-    // Show UI
+    // Show UI (Visual only, no Media volume audio)
     incomingUI.classList.remove('hidden');
     
-    // Play sound as backup
-    alarm.volume = 1.0;
-    alarm.currentTime = 0;
-    alarm.play().catch(e => console.log("Audio blocked - relying on system notification."));
-
-    // Trigger System Notification (Uses Notification Volume)
+    // Trigger System Notification (Uses Notification Volume & System Alert Sound)
     showNotification();
 
     // Auto-dismiss logic
@@ -119,10 +113,7 @@ function dismissCall() {
 }
 
 function stopAlarm() {
-    const alarm = document.getElementById('alarm-sound');
     const incomingUI = document.getElementById('incoming-call-ui');
-    
-    alarm.pause();
     incomingUI.classList.add('hidden');
     
     if (countdownInterval) clearInterval(countdownInterval);
@@ -142,28 +133,25 @@ function requestNotificationPermission() {
 
 function showNotification() {
     const options = {
-        body: "Incoming Call!",
+        body: "Someone is calling you!",
         icon: "https://cdn-icons-png.flaticon.com/512/3616/3616215.png",
         tag: "call-notification",
         renotify: true,
-        silent: false, // Ensure system sound plays (Notification Volume)
+        silent: false, // Forces system notification sound (NOTIFICATION VOLUME)
         requireInteraction: true,
-        vibrate: [500, 100, 500, 100, 500]
+        vibrate: [500, 100, 500, 100, 500, 100, 500]
     };
     
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(reg => {
-            reg.showNotification("CallNotify", options);
+            reg.showNotification("Incoming Call", options);
         });
     }
 }
 
-// Listen for messages from Service Worker (e.g. from Notification 'Dismiss' button)
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', event => {
-        if (event.data === 'STOP_ALARM') {
-            dismissCall();
-        }
+        if (event.data === 'STOP_ALARM') dismissCall();
     });
 
     window.addEventListener('load', () => {

@@ -9,7 +9,7 @@ self.addEventListener('push', function(event) {
         vibrate: [500, 100, 500, 100, 500, 100, 500],
         requireInteraction: true,
         priority: 2, 
-        silent: false, // Forces system notification sound
+        silent: false, // Use system's notification sound channel
         actions: [
             { action: 'dismiss', title: 'Dismiss' }
         ]
@@ -24,7 +24,6 @@ self.addEventListener('notificationclick', function(event) {
     event.notification.close();
     
     if (event.action === 'dismiss') {
-        // Send a message to all clients to stop the alarm
         self.clients.matchAll().then(clients => {
             clients.forEach(client => client.postMessage('STOP_ALARM'));
         });
