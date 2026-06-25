@@ -24,28 +24,22 @@ function clearLog() {
 
 async function unlockAudio() {
     addLog("Activation button clicked.");
-    
-    // 1. Immediately switch UI to avoid "stuck" feeling
     document.getElementById('unlock-view').classList.add('hidden');
     document.getElementById('setup-view').classList.remove('hidden');
     document.getElementById('diag-bar').classList.remove('hidden');
     document.getElementById('log-view').classList.remove('hidden');
     document.getElementById('bottom-controls').classList.remove('hidden');
 
-    // 2. Prime Audio
     const alarm = document.getElementById('alarm-sound');
     try {
-        // We play and immediately pause to satisfy browser requirements
         await alarm.play();
         alarm.pause();
         alarm.currentTime = 0;
         addLog("Audio system primed ✅");
     } catch (e) {
         addLog("Audio priming failed: " + e.message);
-        addLog("Note: Alarm sound might only play after manual interaction.");
     }
 
-    // 3. Prime Vibration
     if ("vibrate" in navigator) {
         try {
             navigator.vibrate(10);
@@ -54,8 +48,6 @@ async function unlockAudio() {
             addLog("Vibration priming failed.");
         }
     }
-
-    // 4. Request Wake Lock
     requestWakeLock();
 }
 
@@ -67,8 +59,6 @@ async function requestWakeLock() {
         } catch (err) {
             addLog("Wake Lock failed: " + err.message);
         }
-    } else {
-        addLog("Wake Lock API not supported on this browser.");
     }
 }
 
@@ -95,60 +85,71 @@ function initPeer(role) {
     
     if (peer) peer.destroy();
     
+    // Expanded STUN server list for better NAT traversal
     peer = new Peer(peerId, {
         config: {
             'iceServers': [
                 { url: 'stun:stun.l.google.com:19302' },
                 { url: 'stun:stun1.l.google.com:19302' },
-                { url: 'stun:stun2.l.google.com:19302' }
+                { url: 'stun:stun2.l.google.com:19302' },
+                { url: 'stun:stun3.l.google.com:19302' },
+                { url: 'stun:stun4.l.google.com:19302' },
+                { url: 'stun:stun.voiparound.com' },
+                { url: 'stun:stun.voipbuster.com' },
+                { url: 'stun:stun.voipstunt.com' },
+                { url: 'stun:stun.voxgratia.org' }
             ]
         },
         debug: 1
     });
 
     peer.on('open', (id) => {
-        addLog("Signaling connected. My Peer ID: " + id);
+        addLog("Signaling server connected ✅");
+        addLog("My Public ID: " + id);
         updateStatus('sig', true);
         document.getElementById('setup-view').classList.add('hidden');
         if (role === 'caller') {
             document.getElementById('caller-view').classList.remove('hidden');
-            document.getElementById('caller-id-display').innerText = `Target: ${sharedId}`;
+            document.getElementById('caller-id-display').innerText = `Target Receiver: ${sharedId}`;
             connectToReceiver();
         } else {
             document.getElementById('receiver-view').classList.remove('hidden');
-            document.getElementById('receiver-id-display').innerText = `ID: ${sharedId}`;
+            document.getElementById('receiver-id-display').innerText = `Listening as: ${sharedId}`;
+            addLog("Waiting for caller to link...");
             requestNotificationPermission();
         }
     });
 
     peer.on('connection', (connection) => {
-        addLog("Incoming connection from: " + connection.peer);
+        addLog("Incoming connection detected from: " + connection.peer);
         conn = connection;
         setupConnListeners();
     });
 
     peer.on('disconnected', () => {
-        addLog("Signaling disconnected. Attempting reconnect...");
+        addLog("Signaling server disconnected. Reconnecting...");
         updateStatus('sig', false);
         peer.reconnect();
     });
 
     peer.on('error', (err) => {
-        addLog("PeerJS Error: " + err.type);
+        addLog("System Error: " + err.type);
         if (err.type === 'peer-unavailable' && deviceRole === 'caller') {
-            addLog("Target receiver not found online.");
+            addLog("CRITICAL: Receiver (ID: " + sharedId + ") is NOT online.");
             document.getElementById('status-msg').innerText = "Receiver not found. Retrying...";
             setTimeout(connectToReceiver, 5000);
+        }
+        if (err.type === 'unavailable-id') {
+            addLog("ERROR: ID '" + sharedId + "' is already in use by someone else.");
+            alert("This ID is already taken. Please choose a different unique ID.");
+            location.reload();
         }
     });
 }
 
 function connectToReceiver() {
-    if (!peer || peer.destroyed) {
-        addLog("Cannot connect: Peer not initialized.");
-        return;
-    }
-    addLog(`Attempting P2P link to: ${sharedId}`);
+    if (!peer || peer.destroyed) return;
+    addLog(`Searching for receiver ID: ${sharedId}...`);
     if (conn) conn.close();
     
     conn = peer.connect(sharedId, { 
@@ -162,7 +163,7 @@ function setupConnListeners() {
     if (!conn) return;
     
     conn.on('open', () => {
-        addLog("P2P Link established ✅");
+        addLog("P2P Link established with receiver ✅");
         updateStatus('p2p', true);
         const statusMsg = document.getElementById('status-msg');
         if (statusMsg) {
@@ -178,29 +179,26 @@ function setupConnListeners() {
 
     conn.on('data', (data) => {
         if (data === 'RING') {
-            addLog("Incoming RING signal received!");
+            addLog("ALARM TRIGGERED!");
             handleIncomingCall();
         }
         if (data === 'DISMISSED') {
-            addLog("Call dismissed by other device.");
+            addLog("Call dismissed.");
             stopAlarm();
-        }
-        if (data === 'PING') {
-            // Heartbeat received
         }
     });
 
     conn.on('close', () => {
-        addLog("P2P Link closed.");
+        addLog("P2P Link lost.");
         updateStatus('p2p', false);
         if (deviceRole === 'caller') {
-            addLog("Auto-reconnecting in 5s...");
+            addLog("Attempting auto-reconnect...");
             setTimeout(connectToReceiver, 5000);
         }
     });
 
     conn.on('error', (err) => {
-        addLog("Connection Error: " + err.message);
+        addLog("Link Error: " + err.message);
     });
 }
 
@@ -214,7 +212,7 @@ function triggerCall() {
             if (conn && conn.open) statusMsg.innerText = "Connected ✅"; 
         }, 2000);
     } else {
-        addLog("Call failed: No active P2P link.");
+        addLog("Cannot call: No active link.");
         connectToReceiver();
     }
 }
